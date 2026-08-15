@@ -1,0 +1,16 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Secrets — never commit. See .env.example.
+.env
+
+# Internal build plan: names the company/role and describes the design process.
+# Not part of the repo structure the plan itself specifies. Remove this line to
+# publish it.
+PLAN.md
+
+.DS_Store
