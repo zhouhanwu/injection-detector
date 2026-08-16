@@ -240,10 +240,40 @@ class ScorerOutput(BaseModel):
         return max(config.SCORE_MIN, min(config.SCORE_MAX, value))
 
 
+# --- Orchestrator -------------------------------------------------------------
+
+OrchestratorAction = Literal["done", "broaden", "narrow", "more"]
+
+
+class OrchestratorDecision(BaseModel):
+    """Whether to keep searching, and which way to move.
+
+    The call that fills this in is the only one in the system that never sees a
+    single word of paper text — just a distribution of numbers. That is
+    deliberate: the component deciding what gets searched for is the one an
+    attacker would most want to reach, so it is placed structurally out of reach.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: OrchestratorAction = Field(
+        description=(
+            "done: the results are good enough to stop. "
+            "more: the search is aimed correctly, fetch the next page of the same "
+            "search. "
+            "broaden: too few results scored well, loosen the search. "
+            "narrow: many results scored well, tighten the search for better ones."
+        )
+    )
+    reasoning: str = Field(
+        description="One or two sentences on what the score distribution shows."
+    )
+
+
 def _main() -> None:
     import json
 
-    for model in (ScorerOutput, SusCatcherOutput):
+    for model in (ScorerOutput, SusCatcherOutput, OrchestratorDecision):
         print(f"--- {model.__name__} ---")
         print(json.dumps(model.model_json_schema(), indent=2))
         print()
