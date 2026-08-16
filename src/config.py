@@ -7,7 +7,10 @@ threshold choices are auditable in one place.
 from __future__ import annotations
 
 import os
+import threading
+from typing import Any
 
+import anthropic
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -68,3 +71,46 @@ def require_api_key() -> str:
             "key in it (the .env file is gitignored), or export the variable."
         )
     return key
+
+
+def make_client() -> anthropic.AsyncAnthropic:
+    """One async client, shared across a run so connections are reused."""
+    return anthropic.AsyncAnthropic(api_key=require_api_key(), max_retries=3)
+
+
+# --- Usage accounting --------------------------------------------------------
+# Every model call records its tokens here so a run can report what it actually
+# cost instead of estimating. Prices are public list prices per million tokens
+# and are only used for a rough figure.
+PRICES_PER_MTOK = {
+    "claude-sonnet-5": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+
+_usage_lock = threading.Lock()
+_usage: dict[str, dict[str, int]] = {}
+
+
+def record_usage(model: str, usage: Any) -> None:
+    """Accumulate token usage for one call. Tolerates missing fields."""
+    with _usage_lock:
+        entry = _usage.setdefault(model, {"calls": 0, "input": 0, "output": 0})
+        entry["calls"] += 1
+        entry["input"] += getattr(usage, "input_tokens", 0) or 0
+        entry["output"] += getattr(usage, "output_tokens", 0) or 0
+
+
+def usage_report() -> tuple[dict[str, dict[str, int]], float]:
+    """Per-model token totals and the approximate list-price cost of the run."""
+    with _usage_lock:
+        snapshot = {model: dict(counts) for model, counts in _usage.items()}
+    cost = 0.0
+    for model, counts in snapshot.items():
+        in_price, out_price = PRICES_PER_MTOK.get(model, (0.0, 0.0))
+        cost += counts["input"] / 1e6 * in_price + counts["output"] / 1e6 * out_price
+    return snapshot, cost
+
+
+def reset_usage() -> None:
+    with _usage_lock:
+        _usage.clear()
