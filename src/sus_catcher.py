@@ -69,6 +69,13 @@ Bias toward flagging. A later stage tests whether flagged text was doing any
 work, and it can discard a false alarm cheaply. It cannot recover something you
 never flagged.
 
+Security research is the other thing to be careful with. Papers about adversarial
+attacks quote the attacks they study: "we show that appending 'ignore all
+previous instructions' to a retrieved document causes the agent to..." is a
+finding being reported, not an instruction being issued. A sentence that
+describes, quotes, measures, or defends against an attack is content. What
+matters is whether the sentence is issuing the instruction or talking about one.
+
 There is one thing you should be careful not to flag. Authors hedge about their
 own work constantly: they speculate about how far a result generalises, state
 limitations, note what they did not test, and reach for words like imagine,

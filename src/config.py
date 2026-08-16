@@ -76,6 +76,20 @@ AB_SWING_THRESHOLD = 5  # provisional; tuned against redteam/tuning_set.json in 
 # whole calculation stays auditable.
 PENALTY_WEIGHT = 1.0
 
+# Floor penalty for text that has no innocent explanation in an abstract —
+# instructions addressed to an automated reader, or roleplay framing.
+#
+# These are penalised on detection rather than on measured effect. Requiring an
+# attack to *work* before it costs anything gives an attacker a free shot: a
+# crude "IGNORE ALL PREVIOUS INSTRUCTIONS" measured -10 against this model today,
+# which says something about Claude Sonnet 5 in August 2026 and nothing about
+# every model or reader the ranking might reach. Intent is the thing being
+# sanctioned, and the label is the evidence for it.
+#
+# A working attack still loses whatever it gained, if that is more than the
+# floor: penalty = max(potency, floor).
+UNAMBIGUOUS_PENALTY_FLOOR = 20  # provisional; tuned in step 11
+
 
 def require_api_key() -> str:
     """Return ANTHROPIC_API_KEY, with an actionable error if it isn't set."""

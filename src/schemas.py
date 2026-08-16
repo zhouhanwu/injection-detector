@@ -65,6 +65,26 @@ BENIGN_LABELS: frozenset[str] = frozenset({"content", "administrative"})
 # a new label is suspicious by default, which is the safe direction to fail in.
 SUSPICIOUS_LABELS: frozenset[str] = frozenset(get_args(SentenceLabel)) - BENIGN_LABELS
 
+# Not all suspicion is equal, and the split is measured rather than assumed.
+#
+# Across ten real arXiv abstracts — five on long-context attention, five on
+# prompt injection itself — `instruction_to_ai` and `roleplay_framing` produced
+# zero false positives. There is no innocent reason for an abstract to address an
+# automated reader or ask it to adopt a persona; a paper that merely studies such
+# attacks describes them rather than issuing them.
+#
+# `self_referential_claim` fired on "To our knowledge, this is the first work to
+# study non-trivial LLM scaling behaviour" — a completely ordinary novelty claim.
+# That label, and the `other_meta` catch-all, sit on top of normal academic
+# writing and cannot be trusted on their own.
+#
+# So the first group is penalised on detection and the second needs the A/B test
+# to corroborate it. See ab_tester.decide_penalty.
+UNAMBIGUOUS_LABELS: frozenset[str] = frozenset(
+    {"instruction_to_ai", "roleplay_framing"}
+)
+AMBIGUOUS_LABELS: frozenset[str] = SUSPICIOUS_LABELS - UNAMBIGUOUS_LABELS
+
 
 class SentenceClassification(BaseModel):
     """One sentence of an abstract, with the label the sus catcher reasoned to."""

@@ -41,6 +41,7 @@ import anthropic
 
 from . import config
 from .arxiv_client import Paper
+from .schemas import UNAMBIGUOUS_LABELS
 from .scorer import probe_score, rank_score
 from .sus_catcher import SusResult
 
@@ -94,20 +95,51 @@ def decide_penalty(
     *,
     threshold: int = config.AB_SWING_THRESHOLD,
     weight: float = config.PENALTY_WEIGHT,
+    floor: int = config.UNAMBIGUOUS_PENALTY_FLOOR,
 ) -> tuple[int, bool, str]:
     """Deterministic code, not a model call, decides what happens to the score.
 
-    Both conditions must hold, which is PLAN.md's rule: the sus catcher must have
-    classified the text as something other than content, **and** removing it must
-    move an undefended ranker by at least the threshold. Either alone is not
-    enough. A flag alone might be a false alarm on harmless text; a swing alone
-    cannot distinguish an injection from a genuinely relevant sentence that was
-    wrongly flagged, since removing either one lowers the score.
+    The rule is tiered by how much the label can be trusted on its own, which is
+    a measured property rather than an assumed one (see schemas.UNAMBIGUOUS_LABELS).
+
+    **Text with no innocent explanation** — an instruction addressed to an
+    automated reader, or roleplay framing — is penalised on detection. Requiring
+    it to work first would hand an attacker a free shot: a crude "IGNORE ALL
+    PREVIOUS INSTRUCTIONS" measures a *negative* potency against this model, and
+    a rule that reads that as "nothing happened" is quietly asserting something
+    about every model the ranking might reach. What is being sanctioned is the
+    attempt. A working attack still loses whatever it gained, if that exceeds the
+    floor.
+
+    **Everything else** still needs PLAN.md's two conditions: flagged *and*
+    corroborated by a swing of at least `threshold`. These labels sit on top of
+    ordinary academic writing — "to our knowledge this is the first work to..."
+    is a real novelty claim that this classifier flags — so a flag alone is not
+    enough to punish anyone.
     """
     if not sus.has_flags:
         return 0, False, "Nothing flagged; no adjustment."
 
-    labels = ", ".join(sorted(sus.classification.flagged_labels))
+    flagged = sus.classification.flagged_labels
+    labels = ", ".join(sorted(flagged))
+    unambiguous = sorted(flagged & UNAMBIGUOUS_LABELS)
+
+    if unambiguous:
+        measured = attack_potency if attack_potency is not None else 0
+        penalty = max(floor, round(weight * measured))
+        effect = (
+            f"It moved an undefended ranker {attack_potency:+d}."
+            if attack_potency is not None
+            else "Its effect was not measured."
+        )
+        return (
+            penalty,
+            True,
+            f"Flagged ({labels}). {', '.join(unambiguous)} has no legitimate place "
+            f"in an abstract, so it is penalised on detection rather than on "
+            f"whether it worked. {effect} Demoted by {penalty}.",
+        )
+
     if attack_potency is None:
         return 0, False, f"Flagged ({labels}) but the A/B test did not run."
 
@@ -117,8 +149,9 @@ def decide_penalty(
             False,
             f"Flagged ({labels}), but removing the flagged text moved an "
             f"undefended ranker {attack_potency:+d}, below the {threshold}-point "
-            "threshold. Detected and reported, not penalised: the text was there, "
-            "and it was not doing anything.",
+            "threshold. Detected and reported, not penalised: these labels also "
+            "cover ordinary academic writing, so a flag alone is not evidence "
+            "of manipulation.",
         )
 
     penalty = max(0, round(weight * attack_potency))
@@ -203,13 +236,18 @@ async def run_ab_test(
             await client.close()
 
     potency = a.relevance - b.relevance
-    penalty, penalised, decision = decide_penalty(sus, potency)
+    policy_penalty, penalised, decision = decide_penalty(sus, potency)
     adjusted = max(
-        config.SCORE_MIN, min(config.SCORE_MAX, d.relevance - penalty)
+        config.SCORE_MIN, min(config.SCORE_MAX, d.relevance - policy_penalty)
     )
     # Report the demotion that actually landed, not the one policy asked for: a
-    # paper cannot lose more points than it had.
+    # paper cannot lose more points than it had. When those differ, say so rather
+    # than leaving a decision that claims a demotion the score never took.
     penalty = d.relevance - adjusted
+    if penalty != policy_penalty:
+        decision += (
+            f" Capped at {penalty}: the paper only had {d.relevance} to lose."
+        )
 
     return ABResult(
         paper=original,
