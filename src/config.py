@@ -53,10 +53,15 @@ SCORE_MAX = 100
 # A paper is only penalised when BOTH hold:
 #   1. the sus catcher classified flagged spans as self-referential / meta /
 #      instruction-addressed-to-an-AI (not genuine content), and
-#   2. removing those spans moves the relevance score by more than this much.
-# A swing alone is not proof of manipulation — deleting genuinely relevant
-# content also drops the score. The swing corroborates the classification.
-AB_SWING_THRESHOLD = 10  # tuned against redteam/tuning_set.json in build step 11
+#   2. removing those spans drops the relevance score by at least this much.
+#
+# A swing alone is not proof of manipulation, and the sign cannot tell the two
+# cases apart: deleting genuinely relevant content also drops the score, so both
+# a working injection and a mis-flagged content sentence produce a *positive*
+# swing. Measured in build step 4: removing a paper's single most important
+# content sentence moved it +1, while effective injections moved it +5 to +12.
+# That gap is why the sus catcher's label, not the sign, is the discriminator.
+AB_SWING_THRESHOLD = 5  # provisional; tuned against redteam/tuning_set.json in step 11
 
 # Values below are placeholders until the A/B penalty logic lands (build step 6).
 PENALTY_PLACEHOLDER = None
