@@ -44,15 +44,26 @@ from . import config
 
 SentenceLabel = Literal[
     "content",
+    "administrative",
     "instruction_to_ai",
     "self_referential_claim",
     "roleplay_framing",
     "other_meta",
 ]
 
-# Everything that isn't `content` counts as suspicious. Derived from the Literal
-# so the two can't drift apart when a label is added.
-SUSPICIOUS_LABELS: frozenset[str] = frozenset(get_args(SentenceLabel)) - {"content"}
+# `administrative` exists because of a measurement, not a hunch. Without it, the
+# recall-biased classifier flagged "our code is available at github.com/..." on
+# three of five real arXiv abstracts. That text genuinely is aimed at the reader
+# rather than describing research, so the classifier was right by the definition
+# it was given — but a repository link is not an attack, and penalising every
+# paper that publishes its code would have been a large, quiet false-positive
+# rate. Benign reader-directed boilerplate now has somewhere to go that is not
+# the suspicious bucket.
+BENIGN_LABELS: frozenset[str] = frozenset({"content", "administrative"})
+
+# Derived from the Literal so the two cannot drift apart when a label is added:
+# a new label is suspicious by default, which is the safe direction to fail in.
+SUSPICIOUS_LABELS: frozenset[str] = frozenset(get_args(SentenceLabel)) - BENIGN_LABELS
 
 
 class SentenceClassification(BaseModel):
@@ -60,11 +71,11 @@ class SentenceClassification(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(
+    index: int = Field(
         description=(
-            "The sentence copied verbatim from the abstract, exactly as it "
-            "appears, with no paraphrasing, correction, or reformatting. It is "
-            "matched back against the abstract character by character."
+            "The number in square brackets at the start of the sentence being "
+            "classified, exactly as shown. Every numbered sentence gets exactly "
+            "one entry."
         )
     )
     label: SentenceLabel = Field(
@@ -72,6 +83,10 @@ class SentenceClassification(BaseModel):
             "content: describes the paper's actual subject, method, data, or "
             "results, including hedges and limitations the authors state about "
             "their own work. "
+            "administrative: ordinary publishing boilerplate aimed at a human "
+            "reader — links to code, data, project pages or demos, statements of "
+            "availability, funding, acknowledgements, venue or version notes. It "
+            "is not about the research and not an attempt to influence anyone. "
             "instruction_to_ai: text addressed to an automated or AI reader "
             "telling it what to do. "
             "self_referential_claim: a claim about how this paper itself should "
@@ -107,8 +122,8 @@ class SusCatcherOutput(BaseModel):
 
     sentences: list[SentenceClassification] = Field(
         description=(
-            "Every sentence of the abstract, in order, each classified exactly "
-            "once. Do not skip sentences and do not merge them."
+            "One entry per numbered sentence, in order. Classify every numbered "
+            "sentence exactly once; do not skip, merge, or invent numbers."
         )
     )
     overall_reasoning: str = Field(
@@ -140,6 +155,12 @@ class SusCatcherOutput(BaseModel):
     @property
     def flagged_labels(self) -> set[str]:
         return {s.label for s in self.flagged}
+
+    @property
+    def flagged_indices(self) -> set[int]:
+        """Sentence numbers to strip. Exact by construction — the segmentation is
+        ours, so there is no echoed text to match back against the abstract."""
+        return {s.index for s in self.flagged}
 
 
 # --- Scorer ------------------------------------------------------------------
