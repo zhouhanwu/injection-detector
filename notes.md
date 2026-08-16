@@ -172,6 +172,37 @@ the suspicious set took false positives on those five papers from **3 to 0**,
 with no loss of detection: a paper carrying both a code link and two injections
 keeps the link and loses both injections.
 
+## The penalty rule, and what each branch costs
+
+Deterministic code, not a model call, decides what happens to a score. Both of
+PLAN.md's conditions must hold: the sus catcher classified the text as something
+other than content, **and** removing it moved the naive probe by at least
+`AB_SWING_THRESHOLD`. The penalty is then the attack potency itself — a paper
+loses exactly what it tried to take — clamped so it cannot lose more than it had.
+
+Four branches, verified end to end:
+
+| case | calls | outcome |
+| --- | --- | --- |
+| nothing flagged | 1 | stripped text is the original text, so one hardened score answers everything |
+| flagged, potency at or above threshold | 4 | full 2x2, demoted by the potency |
+| flagged, potency below threshold | 4 | **detected and reported, not penalised** |
+| every unit flagged | 0 | nothing left to rate, scored 0, no A/B faked |
+
+The third row is the one that matters most for honesty. A crude "IGNORE ALL
+PREVIOUS INSTRUCTIONS" attack measured a potency of **-10** — it made the paper
+look *worse* to an undefended ranker. It is still flagged and still reported, but
+it is not penalised, because the evidence says the text was not doing anything.
+Punishing it would mean punishing on suspicion alone, which is the failure mode
+the whole two-condition rule exists to avoid.
+
+The fourth row was a bug caught in testing. The first version ran a probe on the
+original, invented a stripped score of 0 to compare it against, and then reported
+"the text was there, and it was not doing anything" about a record that was
+100% injection — while marking it `penalised=False`. It now skips the A/B
+entirely rather than fabricating a swing, and says plainly that nothing remained
+to rate.
+
 ## Honest limits
 
 _To be filled in as the build surfaces them — plus the eval numbers, reported once,

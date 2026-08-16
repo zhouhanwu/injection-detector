@@ -63,8 +63,18 @@ SCORE_MAX = 100
 # That gap is why the sus catcher's label, not the sign, is the discriminator.
 AB_SWING_THRESHOLD = 5  # provisional; tuned against redteam/tuning_set.json in step 11
 
-# Values below are placeholders until the A/B penalty logic lands (build step 6).
-PENALTY_PLACEHOLDER = None
+# How hard to demote a paper whose manipulation was confirmed. At 1.0 the penalty
+# equals the number of points the flagged text would have gained on an undefended
+# ranker: a paper loses exactly what it tried to take.
+#
+# One honesty note about the arithmetic. The penalty is measured on the probe
+# scorer's scale and applied to the ranker's, and those two scales differ by up
+# to 15 points in the mid-range. Transferring a *difference* between them is far
+# safer than transferring a level, but it is still an approximation. The penalty
+# is a policy choice about how to treat demonstrated bad faith, not a
+# measurement, and it is reported separately from the score it adjusts so the
+# whole calculation stays auditable.
+PENALTY_WEIGHT = 1.0
 
 
 def require_api_key() -> str:
