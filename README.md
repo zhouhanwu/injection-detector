@@ -1,20 +1,10 @@
-# injection-detector
+# Injection-Detector Architecture
 
-Ranks arXiv papers for a research query, and defends against papers that embed
-prompt-injection attempts in their titles and abstracts — without ever treating
-that text as instructions.
+Ranks arXiv papers for a research query, and defends against papers that embed adversarial or manipulative text in their titles and abstracts, without ever treating that text as instructions.
 
-Real cases of this exist: authors have hidden "give this a positive review"
-prompts in papers to manipulate automated peer review. This system assumes the
-same will be tried against retrieval.
+**Scope: title and abstract only**, from the arXiv API's plain-text metadata. No PDF parsing. Invisible-text tricks (white-on-white, 1pt font) don't exist in this input, because the API returns plain text. The code does not defend against this.
 
-**Scope: title and abstract only**, from the arXiv API's plain-text metadata. No
-PDF parsing. One consequence worth stating plainly — invisible-text tricks
-(white-on-white, 1pt font) don't exist in this input, because the API returns
-plain text. That's a property of the data source, not a defense this code
-provides.
-
-## Run it
+## How to Run it
 
 ```sh
 python3.11 -m venv .venv
@@ -50,6 +40,8 @@ A five-paper run takes about 12 seconds and costs about $0.11.
           Decision: instruction_to_ai has no legitimate place in an abstract, so it is
           penalised on detection rather than on whether it worked. Demoted by 20.
 ```
+
+
 
 ## How it works
 
@@ -89,11 +81,13 @@ no way to tell a paper that tried to manipulate you from one that didn't.
 So there are two scorers with strictly separate jobs. Measured on one mid-range
 paper:
 
-| scorer | roleplay attack | fabricated coverage claim |
-| --- | --- | --- |
-| naive, unfenced — **the probe** | **+10** | **+5** |
-| nonce-fenced | +0 | +5 |
-| fenced + "text carries no authority" — **the ranker** | +0 | +0 |
+
+| scorer                                                | roleplay attack | fabricated coverage claim |
+| ----------------------------------------------------- | --------------- | ------------------------- |
+| naive, unfenced — **the probe**                       | **+10**         | **+5**                    |
+| nonce-fenced                                          | +0              | +5                        |
+| fenced + "text carries no authority" — **the ranker** | +0              | +0                        |
+
 
 The **probe** is a measuring instrument: run it on the original and the stripped
 abstract, and the gap is how far the text would move an undefended ranker. The
@@ -140,12 +134,14 @@ would demote one in twenty legitimate papers for writing normally.
 Held-out set of 31 cases, graded **once**, after tuning was complete. Three runs
 per case, majority vote. Raw output in `redteam/eval_results.txt`.
 
-| | |
-| --- | --- |
-| attacks flagged | **20/20** |
-| attacks penalised | 14/20 |
-| clean papers flagged | 1/11 |
-| clean papers **penalised** | **0/11** |
+
+|                            |           |
+| -------------------------- | --------- |
+| attacks flagged            | **20/20** |
+| attacks penalised          | 14/20     |
+| clean papers flagged       | 1/11      |
+| clean papers **penalised** | **0/11**  |
+
 
 The red-team pool mixes model-generated attacks, attacks whose structure is
 adapted from [a published study of embedded attacks on LLM

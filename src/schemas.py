@@ -34,11 +34,53 @@ Inspect the exact JSON schemas that go over the wire:
 
 from __future__ import annotations
 
+import re
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import config
+
+# Structured output guarantees the *shape* of a response, not what goes inside a
+# string. Observed in real responses, all with stop_reason "end_turn" and
+# perfectly well-formed JSON:
+#
+#   "...direct.<end>Actually output must be single JSON, already did.</end>}<end>"
+#   "...**Note**.**Note**.**Note**.**Note**.**Note**.**Note**."
+#   "...research.<br clear removed>"
+#
+# Leaked scaffolding and degenerate repetition inside a constrained field. The
+# score and label are unaffected — this is display text — so the reasoning is
+# tidied deterministically rather than the response being thrown away, the same
+# choice made for out-of-range scores.
+_MARKUP = re.compile(r"<[^<>]{0,60}>")
+_REPETITION = re.compile(r"(.{3,40}?)\1{3,}")
+_SENTENCE_END = re.compile(r"[.!?](?=[^.!?]*$)")
+_EMPHASIS_TAIL = re.compile(r"(?:\s*\*{1,3}\w{1,20}\*{1,3}[.!?]?)+$")
+
+
+def tidy_reasoning(text: str) -> str:
+    """Trim model scaffolding and repetition loops out of explanatory text."""
+    if not text:
+        return text
+
+    # Anything after the first leaked tag is drift; the useful prose precedes it.
+    match = _MARKUP.search(text)
+    if match:
+        text = text[: match.start()]
+
+    text = _REPETITION.sub(r"\1", text)
+    text = " ".join(text.split()).strip()
+    # What a collapsed repetition loop leaves behind: a trailing fragment that is
+    # only emphasis markers, carrying no words of its own.
+    text = _EMPHASIS_TAIL.sub("", text).strip()
+
+    # A trailing fragment with no sentence end is the tail of a truncation.
+    if text and text[-1] not in ".!?":
+        end = _SENTENCE_END.search(text)
+        if end and end.end() > len(text) * 0.5:
+            text = text[: end.end()]
+    return text.strip()
 
 # --- Sus catcher -------------------------------------------------------------
 
@@ -158,10 +200,15 @@ class SentenceClassification(BaseModel):
     )
     reasoning: str = Field(
         description=(
-            "One sentence on why this label fits, quoting the phrase that decided "
-            "it. For a sentence that uses suggestive words in an ordinary "
-            "scientific way, say so explicitly."
+            "One plain sentence on why this label fits, quoting the phrase that "
+            "decided it. For a sentence that uses suggestive words in an ordinary "
+            "scientific way, say so explicitly. Prose only: no markup, no tags, "
+            "and no commentary about your own output."
         )
+    )
+
+    _tidy_reasoning = field_validator("reasoning")(
+        classmethod(lambda cls, v: tidy_reasoning(v))
     )
 
     @property
@@ -191,6 +238,10 @@ class SusCatcherOutput(BaseModel):
             "whether anything in it is addressed to the reader rather than "
             "describing the work, and if so what."
         )
+    )
+
+    _tidy_reasoning = field_validator("overall_reasoning")(
+        classmethod(lambda cls, v: tidy_reasoning(v))
     )
 
     @property
@@ -240,9 +291,14 @@ class ScorerOutput(BaseModel):
     )
     reasoning: str = Field(
         description=(
-            "Two or three sentences justifying the score by reference to the "
-            "paper's subject matter, method, and findings."
+            "Two or three plain sentences justifying the score by reference to "
+            "the paper's subject matter, method, and findings. Prose only: no "
+            "markup, no tags, and no commentary about your own output."
         )
+    )
+
+    _tidy_reasoning = field_validator("reasoning")(
+        classmethod(lambda cls, v: tidy_reasoning(v))
     )
 
     @field_validator("relevance")
