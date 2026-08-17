@@ -199,9 +199,16 @@ async def index(_: web.Request) -> web.Response:
     )
 
 
+async def architecture(_: web.Request) -> web.Response:
+    return web.Response(
+        text=(HERE / "architecture.html").read_text(), content_type="text/html"
+    )
+
+
 def main() -> None:
     app = web.Application()
     app.router.add_get("/", index)
+    app.router.add_get("/architecture", architecture)
     app.router.add_get("/run", run_stream)
     print("injection-detector  ->  http://localhost:8000")
     web.run_app(app, host="localhost", port=8000, print=None)
