@@ -39,7 +39,15 @@ A five-paper run takes about 12 seconds and costs about $0.11.
           penalised on detection rather than on whether it worked. Demoted by 20.
 ```
 
+### In the browser
 
+```sh
+.venv/bin/python -m viz.server        # http://localhost:8000
+```
+
+Type a query and press run. Each stage appears as it finishes: the search terms kept and dropped, retrieval, one card per paper showing what the sus catcher flagged and how the A/B test scored it, then the orchestrator, then the ranking. It calls the same functions the CLI does and emits events between them, so it is a real run against live arXiv rather than a replay.
+
+`/architecture` is a flow chart of the whole system — every stage, what feeds what, and the offline tuning loop that folds newly-discovered attack patterns back into the sus catcher.
 
 ## How it works
 
