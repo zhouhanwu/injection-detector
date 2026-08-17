@@ -281,6 +281,27 @@ and is not guaranteed — the naive scorer never produced one. Nothing countable
 can be built on it, which means no eval and no report. And the paper still scored
 97: under a hardened-only system, trying was free.
 
+## Two bugs the first end-to-end CLI run exposed
+
+**The default search path returned nothing.** `build_search_query` ANDed every
+whitespace token of the query, stopwords included, so the natural-language topic
+"efficient attention mechanisms for long-context transformers" became
+`all:efficient AND all:attention AND all:mechanisms AND all:for AND
+all:long-context AND all:transformers` and matched **zero** papers on arXiv. The
+first CLI run looked like it worked because the injected attack papers were still
+ranked — the four planted papers were the entire result set, and the absence of
+any real ones was easy to miss. Dropping function words takes that query from 0
+to 238 hits. A query consisting only of stopwords still searches for them, since
+searching for something beats searching for nothing.
+
+**Scorer reasoning comes back with trailing garbage.** Strings arrive with
+fragments appended: "...long-context transformer attention.eatures.", "...for
+long-context transformers.', ':)}", "...highly relevant.。". The scores and
+labels are unaffected, and the JSON parses, but this is the same
+structured-output fragility that produced a truncated-JSON crash at build step 4,
+and it is visible in exactly the output a demo would show. Worth checking whether
+it tracks `effort: "low"` on the scorer before the recording.
+
 ## Honest limits
 
 _To be filled in as the build surfaces them — plus the eval numbers, reported once,

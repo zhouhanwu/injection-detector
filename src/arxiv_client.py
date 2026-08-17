@@ -36,6 +36,15 @@ _OPENSEARCH = "{http://a9.com/-/spec/opensearch/1.1/}"
 # enforced here rather than trusted to callers.
 MIN_REQUEST_INTERVAL = 3.0
 
+# Queries arrive as natural language ("efficient attention mechanisms for
+# long-context transformers"), and ANDing every token including "for" matched
+# nothing at all on arXiv — the default search path returned zero results.
+# Dropping function words leaves the terms that carry the topic.
+_STOPWORDS = frozenset(
+    """a an and are as at be by for from how in into is it of on or that the
+    their there these this to using via with within we what when which while""".split()
+)
+
 _rate_limit_lock = asyncio.Lock()
 _last_request_at = 0.0
 
@@ -105,6 +114,10 @@ def build_search_query(
         query = f'{field}:"{topic.replace(chr(34), "")}"'
     else:
         terms = [t for t in re.split(r"\s+", topic) if t]
+        content_terms = [t for t in terms if t.lower().strip(".,;:") not in _STOPWORDS]
+        # If a query is nothing but function words, searching for them beats
+        # searching for nothing.
+        terms = content_terms or terms
         joiner = f" {combine.upper()} "
         query = joiner.join(f"{field}:{t}" for t in terms)
         if len(terms) > 1:
