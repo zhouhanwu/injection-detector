@@ -5,24 +5,6 @@ set. The split is the point: the sus catcher's prompt is iterated against the
 tuning set, and the eval set is graded exactly once, so the reported numbers are
 not just a measure of how well the prompt was fitted to the cases it was tuned on.
 
-The pool has four sources, and the mix matters more than the count:
-
-* **Generated attacks** across the spectrum — crude instructions, roleplay and
-  hypothetical framing, self-referential ranking claims, and quiet ones written
-  in ordinary academic register.
-* **Literature-derived attacks**, adapted from techniques documented in a
-  published study of embedded attacks on LLM services rather than invented here.
-  They exist because the generated attacks all come from one model, and a pool
-  built that way partly measures whether the detector recognises its own
-  red-teamer's habits. These bring in structures the generator never produced:
-  concealment instructions, conditional triggers, adversarial suffixes, and
-  attacks disguised as defensive prompts.
-* **Real arXiv abstracts** as clean controls. Synthetic "clean" papers are too
-  tidy — real ones contain code links, novelty claims, and hedges, which is
-  where false positives actually come from.
-* **Hand-written hedge traps**: clean papers loaded with imagine, suppose,
-  consider, envision. A keyword matcher fires on all of them. Nothing here
-  should ever be flagged, and these are the most valuable cases in the pool.
 
     python -m redteam.generate_attacks            # regenerate both splits
     python -m redteam.generate_attacks --dry-run  # show the pool, write nothing
@@ -47,12 +29,6 @@ TUNING_PATH = HERE / "tuning_set.json"
 EVAL_PATH = HERE / "eval_set.json"
 
 # A case's split is decided once, from its id alone, and then stored in the JSON.
-#
-# The earlier version shuffled each bucket with a fixed seed, which is
-# reproducible but not *stable*: adding two cases to the pool moved nine existing
-# ones, four of them from tuning into eval — including the case the
-# roleplay_framing description was tuned against. A held-out set that quietly
-# absorbs tuned-on cases whenever the pool grows is not held out.
 #
 # Hashing the id fixes that. Every case's side depends only on its own name, so
 # the pool can grow without disturbing anything already in it, and the stored
