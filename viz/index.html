@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>injection-detector</title>
+<style>
+  :root{
+    --ink:#16181b; --dim:#7b818a; --faint:#a8adb4;
+    --rule:#dcdcd7; --panel:#f6f6f4;
+    --live:#0a6b5c; --flag:#a8261c;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#fff;color:var(--ink)}
+  body{font-family:var(--mono); font-size:14px; line-height:1.55;
+       -webkit-font-smoothing:antialiased; padding:0 28px 120px}
+  .wrap{max-width:1020px;margin:0 auto}
+
+  header{padding:34px 0 22px;border-bottom:1px solid var(--ink)}
+  .brand{font-size:15px;letter-spacing:.14em;text-transform:uppercase}
+  .tag{color:var(--dim);margin-top:4px}
+
+  form{margin-top:26px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .field{flex:1 1 460px;display:flex;align-items:center;gap:10px;
+         border:1px solid var(--ink);padding:11px 13px}
+  .field span{color:var(--faint)}
+  input[type=text]{flex:1;border:0;outline:0;font:inherit;color:var(--ink);background:transparent}
+  label.chk{display:flex;gap:8px;align-items:center;color:var(--dim);cursor:pointer;user-select:none}
+  button{font:inherit;border:1px solid var(--ink);background:var(--ink);color:#fff;
+         padding:11px 20px;cursor:pointer;letter-spacing:.08em}
+  button:disabled{opacity:.4;cursor:default}
+
+  .stage{display:grid;grid-template-columns:52px 1fr;gap:20px;
+         padding:26px 0;border-bottom:1px solid var(--rule)}
+  .num{color:var(--faint);font-size:12px;padding-top:2px}
+  .stage[data-state=live] .num{color:var(--live)}
+  h2{margin:0 0 12px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+  h2 .st{color:var(--faint);font-weight:400;margin-left:10px;letter-spacing:.06em;text-transform:none}
+  .stage[data-state=live] h2 .st{color:var(--live)}
+
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:3px 16px;color:var(--dim)}
+  .kv b{color:var(--ink);font-weight:400}
+  .q{background:var(--panel);padding:9px 12px;color:var(--ink);word-break:break-all}
+  .drop{color:var(--faint);text-decoration:line-through}
+
+  .papers{display:flex;flex-direction:column;gap:14px}
+  .card{border:1px solid var(--rule);padding:14px 16px}
+  .card[data-state=live]{border-color:var(--live)}
+  .card[data-flagged=yes]{border-left:3px solid var(--flag)}
+  .ctitle{display:flex;gap:12px;justify-content:space-between;align-items:baseline}
+  .ctitle b{font-weight:600}
+  .badge{font-size:11px;letter-spacing:.08em;color:var(--faint);white-space:nowrap}
+  .badge.inj{color:var(--flag)}
+
+  .units{margin:12px 0 0;border-top:1px solid var(--rule);padding-top:10px}
+  .unit{display:grid;grid-template-columns:30px 200px 1fr;gap:12px;padding:3px 0;color:var(--dim)}
+  .unit .lb{font-size:12px}
+  .unit.sus{color:var(--ink)}
+  .unit.sus .lb{color:var(--flag)}
+  .why{grid-column:2 / -1;color:var(--flag);font-size:12.5px;padding:2px 0 6px}
+
+  table.ab{border-collapse:collapse;margin-top:12px;font-size:13px}
+  table.ab th,table.ab td{border:1px solid var(--rule);padding:5px 12px;text-align:right}
+  table.ab th{color:var(--dim);font-weight:400;text-align:left}
+  table.ab td.diff{color:var(--ink);font-weight:600}
+  table.ab tr.probe td.diff{color:var(--flag)}
+
+  .verdict{margin-top:11px;padding-top:9px;border-top:1px solid var(--rule);color:var(--dim)}
+  .verdict b{color:var(--flag);font-weight:600}
+  .verdict.clean b{color:var(--live)}
+
+  pre.box{background:var(--panel);border-left:3px solid var(--ink);
+          padding:12px 14px;margin:0;white-space:pre-wrap;font:inherit}
+  .cap{color:var(--faint);font-size:12.5px;margin-top:7px}
+
+  ol.rank{list-style:none;margin:0;padding:0}
+  ol.rank li{display:grid;grid-template-columns:34px 72px 1fr;gap:14px;
+             padding:7px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+  ol.rank li:last-child{border-bottom:0}
+  .score{font-weight:600}
+  .demote{color:var(--flag);font-size:12.5px}
+  .pos{color:var(--faint)}
+
+  .blink{animation:b 1.05s steps(2,start) infinite}
+  @keyframes b{to{visibility:hidden}}
+  .err{color:var(--flag)}
+  footer{color:var(--faint);padding-top:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">injection-detector</div>
+  <div class="tag">ranks arXiv papers, and defends against papers that try to manipulate the ranking</div>
+  <form id="form">
+    <div class="field">
+      <span>&gt;</span>
+      <input id="q" type="text" autocomplete="off" spellcheck="false"
+             value="efficient attention mechanisms for long-context transformers" />
+    </div>
+    <label class="chk"><input type="checkbox" id="inject" checked /> inject adversarial papers</label>
+    <button id="go" type="submit">run</button>
+  </form>
+</header>
+
+<main id="stages"></main>
+<footer id="foot"></footer>
+
+</div>
+<script>
+const $ = (s,r=document)=>r.querySelector(s);
+const el = (t,c,x)=>{const n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=x; return n;};
+const stages = $('#stages'), foot = $('#foot');
+let cards = {}, n = 0;
+
+function stage(id, title){
+  let s = document.getElementById('s-'+id);
+  if(!s){
+    s = el('section','stage'); s.id = 's-'+id; s.dataset.state='live';
+    const num = el('div','num', String(++n).padStart(2,'0'));
+    const body = el('div');
+    const h = el('h2'); h.append(title); const st = el('span','st','running'); st.classList.add('blink'); h.append(st);
+    const c = el('div','content');
+    body.append(h,c); s.append(num,body); stages.append(s);
+    s.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  return s;
+}
+function settle(id, note){
+  const s = document.getElementById('s-'+id); if(!s) return;
+  s.dataset.state='done';
+  const st = $('h2 .st', s); st.classList.remove('blink'); st.textContent = note || '';
+}
+const content = id => $('.content', document.getElementById('s-'+id));
+
+function kv(pairs){
+  const d = el('div','kv');
+  for(const [k,v] of pairs){ d.append(el('div',null,k)); const b=el('b'); b.append(v); d.append(b); }
+  return d;
+}
+
+function handle(e){
+  const d = JSON.parse(e.data);
+
+  if(d.stage==='query'){
+    const s = stage('query','query → search terms');
+    const kept = el('span'); d.kept.forEach((w,i)=>{ kept.append(el('span',null,(i?' ':'')+w)); });
+    const drop = el('span');
+    d.dropped.forEach((x,i)=>{ if(i) drop.append(' '); const t=el('span','drop',x.word); t.title=x.why; drop.append(t); });
+    if(!d.dropped.length) drop.append(el('span','pos','none'));
+    content('query').append(kv([['terms kept', kept],['dropped', drop],
+      ['arXiv query', el('div','q', d.arxiv_query)]]));
+    settle('query','');
+  }
+
+  if(d.stage==='retrieval'){
+    const s = stage('retrieval','retrieval');
+    content('retrieval').append(kv([
+      ['matches', el('span',null, d.total_hits.toLocaleString())],
+      ['fetched', el('span',null, String(d.papers.length - d.injected))],
+      ['injected', el('span', d.injected? 'demote':'', String(d.injected))],
+    ]));
+    settle('retrieval','');
+    const ps = stage('papers','per paper — isolated, concurrent');
+    const wrap = el('div','papers'); wrap.id='cards'; content('papers').append(wrap);
+    d.papers.forEach(p=>{
+      const c = el('div','card'); c.dataset.state='live';
+      const head = el('div','ctitle');
+      head.append(el('b', null, p.title));
+      head.append(el('span','badge'+(p.injected?' inj':''), p.injected?'INJECTED':'arXiv'));
+      c.append(head);
+      const slot = el('div'); c.append(slot);
+      slot.append(el('div','pos','waiting…'));
+      wrap.append(c); cards[p.id] = {card:c, slot};
+    });
+  }
+
+  if(d.stage==='sus'){
+    const c = cards[d.id]; if(!c) return;
+    c.slot.textContent='';
+    const flagged = d.units.filter(x=>x.suspicious);
+
+    // A clean paper needs one line. Listing every sentence of every clean
+    // abstract buries the cases worth looking at.
+    if(!flagged.length){
+      const u = el('div','units');
+      u.append(el('div','cap', `${d.units.length} sentences classified · nothing flagged`));
+      c.slot.append(u);
+      return;
+    }
+
+    c.card.dataset.flagged='yes';
+    const u = el('div','units');
+    u.append(el('div','cap',
+      `${d.units.length} sentences classified · ${flagged.length} flagged`));
+    flagged.forEach(x=>{
+      const row = el('div','unit sus');
+      row.append(el('div','pos','['+x.index+']'));
+      row.append(el('div','lb', x.label));
+      row.append(el('div',null, x.text.length>110 ? x.text.slice(0,107)+'…' : x.text));
+      u.append(row);
+      if(x.reasoning) u.append(el('div','why','↳ '+x.reasoning));
+    });
+    c.slot.append(u);
+  }
+
+  if(d.stage==='scored'){
+    const c = cards[d.id]; if(!c) return;
+    c.card.dataset.state='done';
+    if(d.potency!=null){
+      const t = el('table','ab');
+      t.innerHTML =
+        '<tr><th></th><th style="text-align:right">original</th><th style="text-align:right">stripped</th><th style="text-align:right">difference</th></tr>'+
+        `<tr class="probe"><th>probe (naive)</th><td>${d.probe_original}</td><td>${d.probe_stripped}</td><td class="diff">${d.potency>=0?'+':''}${d.potency}</td></tr>`+
+        `<tr><th>ranker (hardened)</th><td>${d.rank_original}</td><td>${d.base}</td><td class="diff">${d.residual>=0?'+':''}${d.residual}</td></tr>`;
+      c.slot.append(t);
+      c.slot.append(el('div','cap','probe row = how far this text moves an undefended ranker'));
+    }
+    const v = el('div','verdict'+(d.penalised?'':' clean'));
+    v.append('score ');
+    const b = el('b', null, String(d.adjusted));
+    v.append(b);
+    if(d.penalty) v.append(`  (base ${d.base} − penalty ${d.penalty})`);
+    v.append(el('div','cap', d.decision));
+    c.slot.append(v);
+  }
+
+  if(d.stage==='orchestrator_input'){
+    stage('orch','orchestrator');
+    const box = el('pre','box', d.text);
+    content('orch').append(box);
+    content('orch').append(el('div','cap','this is everything the orchestrator receives — no titles, no abstracts, no ids'));
+  }
+  if(d.stage==='orchestrator'){
+    content('orch').append(kv([['decision', el('b',null,d.action)],['because', el('span',null,d.reasoning)]]));
+    settle('orch','');
+  }
+
+  if(d.stage==='ranked'){
+    stage('rank','final ranking — sorted by code, not by a model');
+    const ol = el('ol','rank');
+    d.papers.forEach((p,i)=>{
+      const li = el('li');
+      li.append(el('div','pos', String(i+1).padStart(2,'0')));
+      const sc = el('div','score', String(p.adjusted)); li.append(sc);
+      const t = el('div'); t.append(el('span',null,p.title));
+      if(p.penalty) t.append(el('div','demote', `demoted from ${p.base} — ${p.injected?'injected ':''}manipulation confirmed`));
+      else if(p.flagged) t.append(el('div','cap','flagged, not penalised'));
+      li.append(t); ol.append(li);
+    });
+    content('rank').append(ol);
+    settle('rank','');
+  }
+
+  if(d.stage==='done'){
+    foot.textContent = d.note ? d.note :
+      `${d.calls} model calls · ${d.seconds}s · $${d.cost}`;
+    $('#go').disabled = false;
+  }
+  if(d.stage==='error'){
+    const s = stage('err','error'); content('err').append(el('div','err', d.message));
+    settle('err','failed'); $('#go').disabled=false;
+  }
+}
+
+$('#form').addEventListener('submit', ev=>{
+  ev.preventDefault();
+  const q = $('#q').value.trim(); if(!q) return;
+  stages.textContent=''; foot.textContent=''; cards={}; n=0;
+  $('#go').disabled = true;
+  const src = new EventSource(`/run?q=${encodeURIComponent(q)}&inject=${$("#inject").checked?2:0}&size=4`);
+  src.onmessage = e => { handle(e); if(JSON.parse(e.data).stage==='done') src.close(); };
+  src.onerror = () => { src.close(); $('#go').disabled=false; };
+});
+</script>
+</body>
+</html>
