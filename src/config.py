@@ -61,7 +61,7 @@ SCORE_MAX = 100
 # swing. Measured in build step 4: removing a paper's single most important
 # content sentence moved it +1, while effective injections moved it +5 to +12.
 # That gap is why the sus catcher's label, not the sign, is the discriminator.
-AB_SWING_THRESHOLD = 5  # provisional; tuned against redteam/tuning_set.json in step 11
+AB_SWING_THRESHOLD = 5
 
 # How hard to demote a paper whose manipulation was confirmed. At 1.0 the penalty
 # equals the number of points the flagged text would have gained on an undefended
@@ -88,7 +88,7 @@ PENALTY_WEIGHT = 1.0
 #
 # A working attack still loses whatever it gained, if that is more than the
 # floor: penalty = max(potency, floor).
-UNAMBIGUOUS_PENALTY_FLOOR = 20  # provisional; tuned in step 11
+UNAMBIGUOUS_PENALTY_FLOOR = 20
 
 
 def require_api_key() -> str:

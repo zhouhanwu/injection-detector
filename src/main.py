@@ -146,6 +146,22 @@ async def main() -> None:
             print(f"  {paper.id}: {error}")
         print()
 
+    # Every paper failing usually means one thing wrong with the setup, not many
+    # things wrong with the papers. Say which, rather than leaving a reader to
+    # read five identical API errors and work it out.
+    if not result.ranked and result.failures:
+        joined = " ".join(error for _, error in result.failures).lower()
+        if "credit balance" in joined:
+            cause = "the API account is out of credit — top it up and rerun"
+        elif "authentication" in joined or "invalid x-api-key" in joined:
+            cause = "ANTHROPIC_API_KEY is not valid — check the key in .env"
+        elif "rate_limit" in joined or "429" in joined:
+            cause = "rate limited — wait, or lower --batch-size"
+        else:
+            cause = "see the errors above"
+        print(f"Nothing could be scored: {cause}.")
+        return
+
     flagged = [r for r in result.ranked if r.sus.has_flags]
     penalised = [r for r in result.ranked if r.penalised]
     print(
