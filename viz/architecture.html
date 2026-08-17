@@ -29,6 +29,7 @@
   .sw.code{border-style:dashed}
   .sw.flag{border:0;border-top:2px solid var(--flag);height:0}
   .sw.num{border:0;border-top:2px dashed var(--live);height:0}
+  .sw.off{background:var(--panel);border:1.2px solid var(--faint)}
   .notes{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px 30px}
   .notes h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 5px}
   .notes p{margin:0;color:var(--dim)}
@@ -45,7 +46,7 @@
   <a href="/">← live run</a>
 </header>
 
-<svg viewBox="0 0 1010 1010" role="img" aria-label="System architecture diagram">
+<svg viewBox="0 0 1010 1330" role="img" aria-label="System architecture diagram">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#16181b"/>
@@ -174,6 +175,66 @@
   <text x="700" y="370" font-size="11" stroke="none" fill="#7b818a">verbatim, so forwarding it would</text>
   <text x="700" y="386" font-size="11" stroke="none" fill="#7b818a">re-inject what was just contained.</text>
 
+
+  <!-- ================= offline tuning loop ================= -->
+  <rect x="52" y="930" width="900" height="352" fill="#f6f6f4" stroke="#a8adb4" stroke-width="1.2"/>
+  <text x="70" y="953" font-size="11" stroke="none" fill="#16181b">OFFLINE — DEV TIME. NO PAPER CAN REACH ANY OF THIS AT RUNTIME.</text>
+
+  <!-- human -->
+  <rect x="72" y="975" width="166" height="58"/>
+  <text x="155" y="997" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">HUMAN REVIEW</text>
+  <text x="155" y="1012" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">a novel pattern seen in</text>
+  <text x="155" y="1025" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">the wild or the literature</text>
+
+  <line x1="238" y1="1004" x2="286" y2="1004" marker-end="url(#ah)"/>
+
+  <!-- pool -->
+  <rect x="288" y="975" width="184" height="58"/>
+  <text x="380" y="997" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">RED-TEAM POOL</text>
+  <text x="380" y="1012" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">hand-written + generated</text>
+  <text x="380" y="1025" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">+ real clean controls</text>
+
+  <line x1="472" y1="1004" x2="520" y2="1004" marker-end="url(#ah)"/>
+
+  <!-- split -->
+  <rect x="522" y="975" width="170" height="58" stroke-dasharray="5 3"/>
+  <text x="607" y="997" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">STABLE SPLIT</text>
+  <text x="607" y="1012" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">by hash of case id —</text>
+  <text x="607" y="1025" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">new cases move nobody</text>
+
+  <!-- split fans out -->
+  <path d="M607 1033 L607 1052 L410 1052 L410 1076" marker-end="url(#ah)"/>
+  <path d="M607 1033 L607 1052 L800 1052 L800 1076" marker-end="url(#ah)"/>
+
+  <rect x="316" y="1078" width="188" height="46"/>
+  <text x="410" y="1098" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">TUNING SET</text>
+  <text x="410" y="1113" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">iterate against it freely</text>
+
+  <rect x="706" y="1078" width="188" height="46"/>
+  <text x="800" y="1098" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">HELD-OUT SET</text>
+  <text x="800" y="1113" font-size="10.5" text-anchor="middle" stroke="none" fill="#a8261c">graded once, then never again</text>
+
+  <line x1="410" y1="1124" x2="410" y2="1160" marker-end="url(#ah)"/>
+  <line x1="800" y1="1124" x2="800" y2="1160" marker-end="url(#ah)"/>
+
+  <rect x="300" y="1162" width="220" height="58" stroke-dasharray="5 3"/>
+  <text x="410" y="1183" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">TUNE</text>
+  <text x="410" y="1197" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">sus catcher prompt · label</text>
+  <text x="410" y="1210" font-size="10.5" text-anchor="middle" stroke="none" fill="#7b818a">taxonomy · thresholds</text>
+
+  <rect x="690" y="1162" width="220" height="58"/>
+  <text x="800" y="1183" font-size="12" text-anchor="middle" stroke="none" fill="#16181b">REPORTED RESULT</text>
+  <text x="800" y="1197" font-size="10.5" text-anchor="middle" stroke="none" fill="#0a6b5c">20/20 attacks detected</text>
+  <text x="800" y="1210" font-size="10.5" text-anchor="middle" stroke="none" fill="#0a6b5c">0/11 false penalties</text>
+
+  <text x="300" y="1248" font-size="10.5" stroke="none" fill="#a8261c">tuning never sees the held-out half — otherwise the number measures the fitting, not the system</text>
+  <text x="300" y="1264" font-size="10.5" stroke="none" fill="#7b818a">a pattern only has to be found once; every future run inherits the fix</text>
+
+  <!-- the loop closing: tuned artefacts feed back into the runtime components -->
+  <path d="M300 1191 L34 1191 L34 276 L266 276" stroke="#16181b" stroke-dasharray="7 4" marker-end="url(#ah)"/>
+  <path d="M34 656 L262 656" stroke="#16181b" stroke-dasharray="7 4" marker-end="url(#ah)"/>
+  <text x="20" y="640" font-size="10.5" stroke="none" fill="#16181b" transform="rotate(-90 20 640)" text-anchor="middle">tuned prompt · labels · thresholds</text>
+
   </g>
   </g>
 </svg>
@@ -183,6 +244,7 @@
   <div><span class="sw code"></span> deterministic code</div>
   <div><span class="sw flag"></span> attack-derived text</div>
   <div><span class="sw num"></span> numbers only</div>
+  <div><span class="sw off"></span> offline · dev time</div>
 </div>
 
 <div class="notes">
@@ -206,6 +268,15 @@
     want to reach. It gets a list of scores and picks one index on a fixed
     three-rung ladder; it cannot compose a query. The isolation is structural
     rather than a matter of prompting.</p>
+  </div>
+  <div>
+    <h3>Why tuning is a loop, and offline</h3>
+    <p>A novel pattern has to be found by a person once — in the wild, or in the
+    literature. It goes into the red-team pool, and the tuning half is what the
+    sus catcher's prompt, label taxonomy, and thresholds are fitted against. Every
+    later run inherits the fix. The held-out half never takes part, or the number
+    at the end measures the fitting rather than the system. None of this is
+    reachable at runtime, so no paper can influence how it is judged in future.</p>
   </div>
   <div>
     <h3>Why the sort is code</h3>
