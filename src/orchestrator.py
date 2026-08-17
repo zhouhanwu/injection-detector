@@ -69,6 +69,7 @@ class OrchestratorResult:
     searches: list[str]
     decisions: list[OrchestratorDecision]
     failures: list[tuple[Paper, str]]
+    warnings: list[str]
 
 
 def summarise(
@@ -148,6 +149,8 @@ async def run(
     searches: list[str] = []
     decisions: list[OrchestratorDecision] = []
     failures: list[tuple[Paper, str]] = []
+    warnings: list[str] = []
+    injected_ids = {paper.id for paper in (inject or ())}
 
     try:
         for batch_number in range(1, max_batches + 1):
@@ -156,6 +159,16 @@ async def run(
             )
             searches.append(search_query)
             found = await search(search_query, max_results=batch_size, start=start)
+
+            # An empty retrieval is easy to miss when injected papers are present:
+            # they fill the result set and the run looks healthy. A malformed
+            # search query once returned zero real papers for a whole run and was
+            # only caught by chance, so say it out loud.
+            if not found.papers:
+                warnings.append(
+                    f"Batch {batch_number}: arXiv returned no papers for "
+                    f"{search_query} (reported total hits: {found.total_results})."
+                )
 
             papers = [p for p in found.papers if p.id not in seen]
             if inject and batch_number == 1:
@@ -197,6 +210,12 @@ async def run(
         if owns_client:
             await client.close()
 
+    if seen and not (set(seen) - injected_ids):
+        warnings.append(
+            "Every ranked paper was injected — the search retrieved nothing real. "
+            "The ranking below says nothing about arXiv."
+        )
+
     return OrchestratorResult(
         topic=topic,
         ranked=rank(list(seen.values())),
@@ -204,6 +223,7 @@ async def run(
         searches=searches,
         decisions=decisions,
         failures=failures,
+        warnings=warnings,
     )
 
 

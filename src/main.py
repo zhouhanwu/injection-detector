@@ -123,6 +123,11 @@ async def main() -> None:
     )
     elapsed = time.monotonic() - started
 
+    for warning in result.warnings:
+        print(f"WARNING: {warning}")
+    if result.warnings:
+        print()
+
     print(f'Ranked {len(result.ranked)} papers for: "{args.query}"')
     print(f"({len(result.batches)} batch(es) searched)\n")
     for position, paper_result in enumerate(result.ranked, start=1):
