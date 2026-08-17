@@ -160,6 +160,23 @@ async def run(
             searches.append(search_query)
             found = await search(search_query, max_results=batch_size, start=start)
 
+            # An empty retrieval can fix itself. Broadening exists precisely for a
+            # search that is too tight, but it used to be reachable only after a
+            # batch had been scored — so a query that returned nothing gave up
+            # instead of loosening. Retry down the ladder within this batch rather
+            # than spending one of the batches on it.
+            while not found.papers and rung > 0:
+                rung, start = rung - 1, 0
+                warnings.append(
+                    f"Batch {batch_number}: no results for {search_query}; "
+                    f"broadening to rung {rung + 1} and retrying."
+                )
+                search_query = build_search_query(
+                    topic, **SEARCH_LADDER[rung], categories=categories
+                )
+                searches.append(search_query)
+                found = await search(search_query, max_results=batch_size, start=start)
+
             # An empty retrieval is easy to miss when injected papers are present:
             # they fill the result set and the run looks healthy. A malformed
             # search query once returned zero real papers for a whole run and was
@@ -167,7 +184,8 @@ async def run(
             if not found.papers:
                 warnings.append(
                     f"Batch {batch_number}: arXiv returned no papers for "
-                    f"{search_query} (reported total hits: {found.total_results})."
+                    f"{search_query} even at the broadest setting "
+                    f"(reported total hits: {found.total_results})."
                 )
 
             papers = [p for p in found.papers if p.id not in seen]

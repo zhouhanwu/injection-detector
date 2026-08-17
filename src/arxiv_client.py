@@ -45,6 +45,38 @@ _STOPWORDS = frozenset(
     their there these this to using via with within we what when which while""".split()
 )
 
+# A second category, and the one that actually matters for typed-out queries:
+# words describing the *asking* rather than the topic. Grammatically these are
+# content words, which is why the stopword list above misses them, but in a paper
+# search "papers" carries no information.
+#
+# Measured on "I am looking for recent papers about making attention faster in
+# transformer models that handle very long documents without running out of
+# memory". Keeping the first six surviving terms gives "I am looking recent
+# papers about", whose top arXiv hit is a puzzle paper about prisoners and a
+# lightbulb. Stripping this set instead leaves "attention faster transformer
+# models long documents memory", whose top hits are FlashAttention and
+# Hierarchical Attention Transformers.
+_QUERY_FILLER = frozenset(
+    """about also am best find get handle i like looking make making need new
+    novel out paper papers quite really recent research running search studies
+    study very want without work works""".split()
+)
+
+# Only applied above this many terms. A short query is already precise, and
+# stripping "study" from "study of research practices" would gut it. Long
+# conversational queries are the ones carrying filler.
+FILLER_THRESHOLD = 8
+
+# Last-resort backstop. Rarely reached once filler is gone, and deliberately
+# blunt: truncating topical terms loses signal, so auto-broadening on an empty
+# retrieval is the better recovery path.
+MAX_AND_TERMS = 8
+
+
+def _normalise_term(term: str) -> str:
+    return term.lower().strip(".,;:?!\"'()")
+
 _rate_limit_lock = asyncio.Lock()
 _last_request_at = 0.0
 
@@ -114,10 +146,16 @@ def build_search_query(
         query = f'{field}:"{topic.replace(chr(34), "")}"'
     else:
         terms = [t for t in re.split(r"\s+", topic) if t]
-        content_terms = [t for t in terms if t.lower().strip(".,;:") not in _STOPWORDS]
+        content_terms = [t for t in terms if _normalise_term(t) not in _STOPWORDS]
         # If a query is nothing but function words, searching for them beats
         # searching for nothing.
         terms = content_terms or terms
+
+        if len(terms) > FILLER_THRESHOLD:
+            core = [t for t in terms if _normalise_term(t) not in _QUERY_FILLER]
+            terms = core or terms
+
+        terms = terms[:MAX_AND_TERMS]
         joiner = f" {combine.upper()} "
         query = joiner.join(f"{field}:{t}" for t in terms)
         if len(terms) > 1:

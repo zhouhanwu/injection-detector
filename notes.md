@@ -302,6 +302,58 @@ structured-output fragility that produced a truncated-JSON crash at build step 4
 and it is visible in exactly the output a demo would show. Worth checking whether
 it tracks `effort: "low"` on the scorer before the recording.
 
+## Query handling: literal terms, and why the term list needed two stopword sets
+
+Queries are never rewritten by a model. `build_search_query` splits on
+whitespace, drops noise words, and joins the rest with AND — that is the whole
+mechanism. The orchestrator's model call picks a *rung* on a three-step breadth
+ladder and cannot emit query text at all, so the isolation between papers and the
+search holds structurally rather than by prompting. An LLM query rewriter would
+have been the obvious convenience and the obvious thing to attack.
+
+The cost of staying literal is that query length matters, and it degrades hard:
+
+| query | AND terms | hits |
+| --- | --- | --- |
+| sparse attention | 2 | 4,085 |
+| efficient attention mechanisms for long-context transformers | 5 | 238 |
+| ...plus "models in natural language processing" | 9 | 18 |
+| a 16-word conversational request | 19 | **0** |
+
+Capping the term count is the obvious fix and picking *which* terms to keep is
+the real question. Measured on that 16-word query:
+
+| kept | hits | arXiv's top hit |
+| --- | --- | --- |
+| first 6 | 1 | "100 prisoners and a lightbulb" |
+| last 6 | 2 | RIS-Kernel: Long-Context LLM Inference |
+| longest 6 | 0 | — |
+| filler stripped (7 terms) | 5 | **FlashAttention** |
+
+Keeping the first N is the worst option available, and predictably so: a
+conversational query front-loads the *asking*, not the topic. "I am looking
+recent papers about" retrieves a puzzle paper about prisoners.
+
+So the count was never the mechanism — the classification was. There are two
+distinct categories of noise, and only the first was handled:
+
+* **function words** (`for`, `of`, `the`) — grammatical filler;
+* **query boilerplate** (`looking`, `papers`, `recent`, `about`, `very`) —
+  content words grammatically, but describing the act of asking. In a paper
+  search, "papers" carries no information.
+
+The second set is applied only above eight terms, because a short query is
+already precise: stripping "study" and "research" from "study of research
+practices" would gut it, and that query needs no help. A term cap remains behind
+both as a blunt backstop, but truncating topical terms is exactly the failure
+"longest 6" demonstrates, so the real recovery path is broadening.
+
+Which the orchestrator could not previously do. Broadening existed for a search
+that was too tight, but was only reachable *after* a batch had been scored, so a
+query returning nothing hit `if not papers: break` and gave up. It now walks down
+the ladder within the batch and retries, without spending one of its batches on
+the attempt.
+
 ## Honest limits
 
 _To be filled in as the build surfaces them — plus the eval numbers, reported once,
