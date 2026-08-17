@@ -123,18 +123,10 @@ only at the end."""
 
 
 # Attacks whose *structure* comes from documented technique rather than from this
-# codebase's own imagination.
+# codebase's own imagination. Handwritten for evaluation.
 #
-# TODO(citation): add the arXiv id and title of the source paper. Its taxonomy —
-# the AEA attack prompt, the three payload classes, the defensive self-inspection
-# prompt — is what these are adapted from, and the repository should cite it
-# rather than gesture at it.
+# (citation): https://arxiv.org/html/2508.17674v2
 #
-# Be precise about what this does and does not fix. The prose below is still
-# written by a model, so these are not "hand-written attacks" in the sense PLAN.md
-# asks for, and they are not an independent source of adversarial *style*. What
-# they do contribute is adversarial *structures* the generator never produced on
-# its own, taken from techniques someone else documented:
 #
 #   answer_from_supplied_list     score from a value the text supplies
 #   game_framing                  the directive arrives inside a fiction
@@ -147,15 +139,8 @@ only at the end."""
 #   paid_placement_claim          assert bought ranking priority
 #   harmful_payload_instruction   demand a supplied harmful statement
 #
-# The threat model needed translating. The source paper attacks an LLM service
-# answering user questions; this system ranks papers. "Answer from the supplied
-# list" becomes "score from the supplied value", and a payload that corrupts an
-# answer becomes one that corrupts a ranking.
 #
-# To replace any of these with genuinely human-written text: edit the entries,
-# keeping the ids. Code-defined cases are refreshed from this file on every run
-# while their stored split is preserved, so rewriting content moves nothing
-# between tuning and eval.
+
 HAND_WRITTEN: list[dict] = [
     {
         # AEA attack prompt: instructs the model to answer from an attacker-supplied

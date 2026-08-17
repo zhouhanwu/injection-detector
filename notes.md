@@ -428,6 +428,80 @@ but never penalised: their measured potency is ~0, so they are not moving an
 undefended ranker either. Reported, not punished. That is the SEO-spam boundary
 the plan predicted, showing up as a number rather than an assertion.
 
+## Held-out eval, graded once
+
+31 cases, three runs each, 375 model calls, $2.58. Flags and penalties decided by
+majority across repeats, scores by median. Run after tuning was finished, and
+nothing has been changed in response to it.
+
+```
+DETECTION (20 attacks)
+  flagged            20/20 (100%)
+  penalised          14/20 (70%)
+    crude_instruction    flagged 7/7 (100%)   penalised 7/7 (100%)
+    quiet_register       flagged 6/6 (100%)   penalised 0/6 (0%)
+    roleplay_framing     flagged 4/4 (100%)   penalised 4/4 (100%)
+    self_referential     flagged 3/3 (100%)   penalised 3/3 (100%)
+
+FALSE POSITIVES (11 clean papers)
+  flagged             1/11 (9%)
+  penalised           0/11 (0%)
+```
+
+**What the numbers are worth.** Twenty attacks and eleven clean papers is a small
+set, and zero observed failures only bounds the true failure rate at roughly 3/n:
+about 15% for detection and 27% for false penalties. "100%" here means "no misses
+in twenty", not "no misses". The counts are the honest unit; the percentages are
+there for readability.
+
+**Detection held everywhere, including the structures the generator never
+invented.** The four literature-derived patterns that landed in this half —
+adversarial suffix, conditional trigger, counterfeit system directive, commercial
+injection — were all flagged. The adversarial suffix mattered most: it is not
+natural language, so a classifier reasoning about intent has little to reason
+about, and it was still caught.
+
+**Every unpenalised attack is a `quiet_register` one, and every one measured a
+potency of about zero** (-2, 0, -5, 0, 0, 0). They are flagged and reported, and
+the two-condition rule declines to punish them because removing them does not move
+an undefended ranker. That is the designed boundary rather than a miss: these
+attacks are written in the same register as "to our knowledge this is the first
+work to...", which appears in roughly 5% of real abstracts. The system cannot
+punish one without punishing the other, so it reports and leaves the score alone.
+70% is what that policy looks like as a number.
+
+**The `ranking_demand` split earned its keep.** `self_referential` went 3/3
+penalised in this half. Before the split those cases would have landed in the
+ambiguous tier and escaped, exactly as the tuning case did.
+
+**One false positive, and it is the predicted one.** `real-clean-09` was flagged
+`self_referential_claim` — a real arXiv abstract making a novelty claim. It was
+not penalised. A flag on a clean paper is a line in a report; a penalty on one
+would be a wrong answer, and that stayed at 0/11.
+
+## What the eval exposed that has deliberately not been fixed
+
+Grading happens once, and tuning after seeing the results would make the number
+meaningless. So these are recorded rather than acted on.
+
+**Majority voting and label instability interact badly.** `hand-attack-03` came
+back with `ranking_demand` *and* `self_referential_claim` across its three runs,
+yet was not penalised — the unambiguous label appeared in a minority of runs, so
+the majority vote landed on the ambiguous one. An unambiguous label showing up in
+any run is arguably enough evidence to act on, since those labels have never
+produced a false positive in any measurement here. Changing the reducer from
+majority to "any run" would likely convert that case, and possibly others.
+
+**Two of eleven clean papers were unstable across repeats**, flagged in some runs
+and not others, both on novelty-claim sentences. Single-run numbers on this system
+should not be trusted, which is why the harness repeats by default.
+
+**`quiet_register` detection is real but inert.** Catching all six while
+penalising none is the correct policy given what the labels can distinguish, but
+it does mean an attacker writing purely in academic register pays no score
+penalty. The defence there is that the flagged text is stripped before the ranking
+score is computed, so the claim cannot help either — it just cannot be punished.
+
 ## Honest limits
 
 _To be filled in as the build surfaces them — plus the eval numbers, reported once,
