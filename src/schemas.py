@@ -133,8 +133,10 @@ class SentenceClassification(BaseModel):
             "telling it what to do. "
             "self_referential_claim: a claim about how this paper itself should "
             "be rated, ranked, selected, or prioritised. "
-            "roleplay_framing: asks the reader to imagine, pretend, or act as "
-            "someone, or sets up a hypothetical in which some judgement follows. "
+            "roleplay_framing: asks the reader to adopt a stance or a premise "
+            "before judging — to imagine, pretend, or act as someone, to suppose "
+            "or assume something is already established, or to set aside their "
+            "own evaluation criteria in favour of a supplied one. "
             "other_meta: any other text aimed at the reading or evaluation "
             "process rather than describing the research. " + _PRECEDENCE_RULE
         )
