@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
-import random
 from pathlib import Path
 from typing import Literal
 
@@ -42,10 +42,24 @@ HERE = Path(__file__).parent
 TUNING_PATH = HERE / "tuning_set.json"
 EVAL_PATH = HERE / "eval_set.json"
 
-# Fixed so the split is reproducible: a run that reshuffles the held-out set is
-# not a held-out set.
-SPLIT_SEED = 20260817
-TUNING_FRACTION = 0.55
+# A case's split is decided once, from its id alone, and then stored in the JSON.
+#
+# The earlier version shuffled each bucket with a fixed seed, which is
+# reproducible but not *stable*: adding two cases to the pool moved nine existing
+# ones, four of them from tuning into eval — including the case the
+# roleplay_framing description was tuned against. A held-out set that quietly
+# absorbs tuned-on cases whenever the pool grows is not held out.
+#
+# Hashing the id fixes that. Every case's side depends only on its own name, so
+# the pool can grow without disturbing anything already in it, and the stored
+# `split` field is authoritative for cases that already exist.
+TUNING_PERCENT = 55
+
+
+def assign_split(case_id: str) -> str:
+    """Which half a *new* case belongs to. Depends only on its id."""
+    digest = hashlib.sha256(case_id.encode()).hexdigest()
+    return "tuning" if int(digest[:8], 16) % 100 < TUNING_PERCENT else "eval"
 
 AttackType = Literal[
     "crude_instruction",
@@ -103,8 +117,21 @@ text sits — attacks that are always the last sentence teach a detector to look
 only at the end."""
 
 
-# Written by hand, deliberately not by a model, so the eval is not purely a test
-# of whether the detector recognises one generator's style.
+# PLACEHOLDERS, AND CURRENTLY THE WEAKEST PART OF THIS POOL.
+#
+# These were written by Claude, not by a person. An earlier version of this
+# comment claimed they were hand-written; that was wrong, and worth stating
+# plainly rather than quietly deleting.
+#
+# It matters because of what they are for. PLAN.md asks for human-written attacks
+# so the eval is not purely a test of whether the detector recognises its own
+# red-teamer's habits. Every attack in the pool coming from one model defeats
+# exactly that, so this section currently provides none of the diversity its
+# presence implies, and any result should be read with that in mind.
+#
+# To replace them: edit the entries below, keeping the ids. Code-defined cases are
+# refreshed from this file on every run while their stored split is preserved, so
+# rewriting the content moves nothing between tuning and eval.
 HAND_WRITTEN: list[dict] = [
     {
         "id": "hand-attack-01",
@@ -260,19 +287,23 @@ async def generate(count: int, *, client) -> list[dict]:
     ]
 
 
-async def real_clean_papers(count: int) -> list[dict]:
+async def real_clean_papers(count: int, *, skip: int = 0) -> list[dict]:
     """Real arXiv abstracts as clean controls.
 
     Real papers are a harder and fairer test than synthetic ones: they contain
     code links, novelty claims, and hedges, which is where false positives come
     from in practice.
     """
+    # `skip` pages past papers an earlier run already took, so growing the clean
+    # set brings in genuinely new abstracts rather than re-adding the same ones.
     result = await search(
-        build_search_query("long context transformer attention"), max_results=count
+        build_search_query("long context transformer attention"),
+        max_results=count,
+        start=skip,
     )
     return [
         {
-            "id": f"real-clean-{i:02d}",
+            "id": f"real-clean-{i:02d}",  # renumbered by the caller
             "kind": "clean",
             "source_arxiv_id": paper.id,
             "title": paper.title,
@@ -282,23 +313,46 @@ async def real_clean_papers(count: int) -> list[dict]:
     ]
 
 
-def split(pool: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Deterministic split, stratified so both halves see every case kind."""
-    buckets: dict[str, list[dict]] = {}
-    for case in pool:
-        key = case.get("attack_type", "clean")
-        buckets.setdefault(key, []).append(case)
+def load_existing() -> dict[str, dict]:
+    """Cases already on disk, keyed by id, carrying their frozen split."""
+    pool: dict[str, dict] = {}
+    for name, path in (("tuning", TUNING_PATH), ("eval", EVAL_PATH)):
+        if not path.exists():
+            continue
+        for case in json.loads(path.read_text())["cases"]:
+            case.setdefault("split", name)  # files written before splits were stored
+            pool[case["id"]] = case
+    return pool
 
-    rng = random.Random(SPLIT_SEED)
-    tuning: list[dict] = []
-    evaluation: list[dict] = []
-    for key in sorted(buckets):
-        cases = sorted(buckets[key], key=lambda c: c["id"])
-        rng.shuffle(cases)
-        cut = round(len(cases) * TUNING_FRACTION)
-        tuning.extend(cases[:cut])
-        evaluation.extend(cases[cut:])
-    return tuning, evaluation
+
+def merge(existing: dict[str, dict], incoming: list[dict]) -> dict[str, dict]:
+    """Fold new or edited cases into the pool without moving anything.
+
+    Code-defined cases (the hand-written attacks and hedge traps) are refreshed
+    from this file so they can be rewritten in place. Generated and fetched cases
+    are only ever added, never regenerated — their content is what the tuning was
+    done against, and silently rewriting it would invalidate that work.
+    """
+    pool = dict(existing)
+    for case in incoming:
+        case_id = case["id"]
+        if case_id in pool:
+            case["split"] = pool[case_id]["split"]  # frozen, whatever else changes
+        else:
+            case["split"] = assign_split(case_id)
+        case["expect_flagged"] = case["kind"] == "attack"
+        pool[case_id] = case
+    return pool
+
+
+def next_index(pool: dict[str, dict], prefix: str) -> int:
+    """First unused number for an id prefix, so new cases never collide."""
+    used = [
+        int(case_id.rsplit("-", 1)[-1])
+        for case_id in pool
+        if case_id.startswith(prefix) and case_id.rsplit("-", 1)[-1].isdigit()
+    ]
+    return max(used, default=0) + 1
 
 
 def describe(cases: list[dict]) -> str:
@@ -311,38 +365,78 @@ def describe(cases: list[dict]) -> str:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate the red-team pool.")
-    parser.add_argument("--generated", type=int, default=14)
-    parser.add_argument("--real-clean", type=int, default=8)
+    parser = argparse.ArgumentParser(
+        description="Grow the red-team pool without disturbing existing cases."
+    )
+    parser.add_argument(
+        "--add-attacks",
+        type=int,
+        default=0,
+        help="generate this many NEW attacks and add them to the pool",
+    )
+    parser.add_argument(
+        "--add-clean",
+        type=int,
+        default=0,
+        help="fetch this many NEW real arXiv abstracts as clean controls",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    client = config.make_client()
-    try:
-        generated, real_clean = await asyncio.gather(
-            generate(args.generated, client=client),
-            real_clean_papers(args.real_clean),
-        )
-    finally:
-        await client.close()
+    existing = load_existing()
+    print(f"existing pool: {len(existing)} cases")
 
-    pool = generated + HAND_WRITTEN + HEDGE_TRAPS + real_clean
-    for case in pool:
-        case["expect_flagged"] = case["kind"] == "attack"
+    incoming: list[dict] = list(HAND_WRITTEN) + list(HEDGE_TRAPS)
 
-    tuning, evaluation = split(pool)
-    print(f"pool     {len(pool):>3} cases  ({describe(pool)})")
-    print(f"tuning   {len(tuning):>3} cases  ({describe(tuning)})")
-    print(f"eval     {len(evaluation):>3} cases  ({describe(evaluation)})")
+    if args.add_attacks or args.add_clean:
+        client = config.make_client()
+        try:
+            generated, clean = await asyncio.gather(
+                generate(args.add_attacks, client=client)
+                if args.add_attacks
+                else _nothing(),
+                real_clean_papers(args.add_clean, skip=len(existing))
+                if args.add_clean
+                else _nothing(),
+            )
+        finally:
+            await client.close()
+
+        start = next_index(existing, "gen-attack-")
+        for offset, case in enumerate(generated):
+            case["id"] = f"gen-attack-{start + offset:02d}"
+        start = next_index(existing, "real-clean-")
+        for offset, case in enumerate(clean):
+            case["id"] = f"real-clean-{start + offset:02d}"
+        incoming.extend(generated)
+        incoming.extend(clean)
+
+    pool = merge(existing, incoming)
+    added = sorted(set(pool) - set(existing))
+    moved = [i for i in existing if existing[i]["split"] != pool[i]["split"]]
+
+    tuning = [c for c in pool.values() if c["split"] == "tuning"]
+    evaluation = [c for c in pool.values() if c["split"] == "eval"]
+
+    print(f"added        {len(added)} cases: {', '.join(added) or 'none'}")
+    print(f"moved split  {len(moved)} cases: {', '.join(moved) or 'none'}")
+    print(f"\ntuning  {len(tuning):>3}  ({describe(tuning)})")
+    print(f"eval    {len(evaluation):>3}  ({describe(evaluation)})")
 
     if args.dry_run:
         print("\n--dry-run: nothing written")
         return
 
-    TUNING_PATH.write_text(json.dumps({"cases": tuning}, indent=2) + "\n")
-    EVAL_PATH.write_text(json.dumps({"cases": evaluation}, indent=2) + "\n")
-    print(f"\nwrote {TUNING_PATH} and {EVAL_PATH}")
-    print(f"usage: {config.usage_report()}")
+    for path, cases in ((TUNING_PATH, tuning), (EVAL_PATH, evaluation)):
+        cases.sort(key=lambda c: c["id"])
+        path.write_text(json.dumps({"cases": cases}, indent=2) + "\n")
+    print(f"\nwrote {TUNING_PATH.name} and {EVAL_PATH.name}")
+    if config.usage_report()[1]:
+        print(f"usage: {config.usage_report()}")
+
+
+async def _nothing() -> list[dict]:
+    return []
 
 
 if __name__ == "__main__":

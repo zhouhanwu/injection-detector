@@ -356,17 +356,38 @@ the attempt.
 
 ## Red-team pool, and what tuning changed
 
-29 cases: 18 attacks and 11 clean, split 16 tuning / 13 held-out, stratified so
-both halves see every case kind. Four sources, and the mix matters more than the
-count — generated attacks across four kinds, hand-written attacks written without
-a model, real arXiv abstracts as clean controls, and hand-written hedge traps
-stuffed with imagine/suppose/consider that must never be flagged.
+54 cases, 27 tuning and 27 held-out. Four sources, and the mix matters more than
+the count — generated attacks across four kinds, "hand-written" attacks, real
+arXiv abstracts as clean controls, and hedge traps stuffed with
+imagine/suppose/consider that must never be flagged.
+
+**The hand-written attacks are the weak point, and they are not hand-written.**
+They were produced by the same model as the generated ones. PLAN.md asks for
+human-written attacks precisely so the eval is not just measuring whether the
+detector recognises its own red-teamer's habits, and as it stands the pool
+provides none of that diversity. Any result should be read with that caveat until
+a person replaces them.
+
+**The split is stored, not computed.** It began as a seeded shuffle, which is
+reproducible but not stable: adding two cases moved nine existing ones, four of
+them from tuning into eval — including the very case the `roleplay_framing`
+description had been tuned against. A held-out set that absorbs tuned-on cases
+whenever the pool grows is not held out. Each case's side is now decided once
+from a hash of its id and written into the JSON, and growing the pool from 29 to
+54 cases moved exactly zero of them.
+
+Sizing, honestly: with 16 attacks and 11 clean papers in the held-out half, zero
+observed failures still only bounds the true failure rate at roughly 3/n — about
+19% for detection and 27% for false penalties. That is enough to catch a gross
+failure and nowhere near enough to support a precise percentage, which is why the
+results below are reported as counts.
 
 Real abstracts are used for the clean controls deliberately. Synthetic clean
 papers are too tidy; real ones carry code links, novelty claims, and hedges, which
 is where false positives actually come from.
 
-Tuning-set results, one run per case:
+Tuning-set results, one run per case, measured on the 16-case tuning set before
+the pool was grown to 54:
 
 | | before tuning | after |
 | --- | --- | --- |
